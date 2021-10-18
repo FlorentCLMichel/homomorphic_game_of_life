@@ -1,0 +1,8 @@
+[package]
+name = "homomorphic_game_of_life"
+version = "0.0.1"
+authors = ["Florent C L Michel"]
+edition = "2018"
+
+[dependencies]
+concrete-boolean = "0.1.0"
