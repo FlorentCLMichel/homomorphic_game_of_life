@@ -6,3 +6,7 @@ edition = "2018"
 
 [dependencies]
 concrete-boolean = "0.1.0"
+ggez = "0.6.0"
+glam = "0.15.2"
+nalgebra = "0.18"
+rayon = "1.5"

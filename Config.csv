@@ -1,0 +1,8 @@
+500 40 80 80 0. 0. 0. 1. 1. 1. 1 10000 
+# The first line of this file contains the configuration data. Each number must be followed by a space.
+# In order, they represent: 
+#   the time between steps in µs
+#   the pixel size
+#   the grid dimensions (height then depth)
+#   the ‘dead’ color (r, g, b)
+#   the ‘alive’ color (r, g, b)

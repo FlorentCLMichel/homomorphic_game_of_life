@@ -1,4 +1,13 @@
-pub use concrete_boolean::{ gen_keys, server_key::ServerKey, ciphertext::Ciphertext };
+pub use concrete_boolean::{ gen_keys, server_key::ServerKey, ciphertext::Ciphertext,
+                                      client_key::ClientKey };
+use rayon::prelude::*;
+
+mod graph;
+pub use graph::*;
+
+struct SendPtr (*const ServerKey);
+unsafe impl Sync for SendPtr {}
+unsafe impl Send for SendPtr {}
 
 // add one encrypted bit `a` to the encrypted binary representation `b` of a 3-bit number, with 8
 // identified with 0
@@ -122,7 +131,7 @@ impl Board {
     /// let mut board = Board::new(n_cols, states);
     /// 
     /// // update the board
-    /// board.evolve(&server_key, &zeros);
+    /// board.update(&server_key, &zeros);
     ///
     /// // decrypt and show the board
     /// for i in 0..n_rows {
@@ -137,37 +146,116 @@ impl Board {
     /// }
     /// println!("");
     /// ```
-    pub fn evolve(&mut self, server_key: &ServerKey, zeros: &(Ciphertext, Ciphertext, Ciphertext)) {
+    pub fn update(&mut self, server_keys: &Vec<std::sync::Mutex<ServerKey>>, zeros: &(Ciphertext, Ciphertext, Ciphertext)) 
+    {
         
-        let mut new_states = Vec::<Ciphertext>::new();
-
         let nx = self.dimensions.0;
         let ny = self.dimensions.1;
-        for i in 0..nx {
+        
+        let new_states = (0..nx*ny).into_par_iter().map( |k| {
+
+            let i = k / ny;
+            let j = k % ny;
+
             let im = if i == 0 { nx-1 } else { i-1 };
             let ip = if i == nx-1 { 0 } else { i+1 };
-            for j in 0..ny {
-                let jm = if j == 0 { ny-1 } else { j-1 };
-                let jp = if j == ny-1 { 0 } else { j+1 };
+            let jm = if j == 0 { ny-1 } else { j-1 };
+            let jp = if j == ny-1 { 0 } else { j+1 };
 
-                // get the neighbours, with periodic boundary conditions
-                let n1 = &self.states[im*ny+jm];
-                let n2 = &self.states[im*ny+j];
-                let n3 = &self.states[im*ny+jp];
-                let n4 = &self.states[i*ny+jm];
-                let n5 = &self.states[i*ny+jp];
-                let n6 = &self.states[ip*ny+jm];
-                let n7 = &self.states[ip*ny+j];
-                let n8 = &self.states[ip*ny+jp];
+            // get the neighbours, with periodic boundary conditions
+            let n1 = &self.states[im*ny+jm];
+            let n2 = &self.states[im*ny+j];
+            let n3 = &self.states[im*ny+jp];
+            let n4 = &self.states[i*ny+jm];
+            let n5 = &self.states[i*ny+jp];
+            let n6 = &self.states[ip*ny+jm];
+            let n7 = &self.states[ip*ny+j];
+            let n8 = &self.states[ip*ny+jp];
 
-                // see if the cell is alive of dead
-                new_states.push(is_alive(server_key, &self.states[i*ny+j], 
-                                         &vec![n1,n2,n3,n4,n5,n6,n7,n8], zeros));
-
+            // see if the cell is alive of dead
+            let mut k = i;
+            let mut sk = server_keys[k % server_keys.len()].try_lock();
+            while let Err(_) = sk {
+                k += 1;
+                sk = server_keys[k % server_keys.len()].try_lock();
             }
-        }
+            is_alive(&sk.unwrap(), 
+                     &self.states[i*ny+j], 
+                     &vec![n1,n2,n3,n4,n5,n6,n7,n8], zeros)
+            
+        }).collect();
 
         // update the board
         self.states = new_states;
     }
+}
+
+
+// config structure
+pub struct Config {
+    pub wait_time_micros: u64,
+    pub pixel_size: usize,
+    pub dimensions: (usize, usize),
+    pub col1: (f32,f32,f32),
+    pub col2: (f32,f32,f32),
+}
+
+impl Config {
+    pub fn read(fname: &str) -> Result<Config, Box<dyn std::error::Error>> {
+
+        let err_message = "Missing argument in the config file";
+    
+        // load the content
+        let content = std::fs::read_to_string(fname)?;
+
+        // separate the nubers
+        let mut content = content.split(' ');
+    
+        // read the content
+        Ok(Config {
+            wait_time_micros: content.next().ok_or(err_message)?.parse::<u64>()?,
+            pixel_size: content.next().ok_or(err_message)?.parse::<usize>()?,
+            dimensions : (
+                content.next().ok_or(err_message)?.parse::<usize>()?,
+                content.next().ok_or(err_message)?.parse::<usize>()?),
+            col1 : (
+                content.next().ok_or(err_message)?.parse::<f32>()?,
+                content.next().ok_or(err_message)?.parse::<f32>()?,
+                content.next().ok_or(err_message)?.parse::<f32>()?),
+            col2 : (
+                content.next().ok_or(err_message)?.parse::<f32>()?,
+                content.next().ok_or(err_message)?.parse::<f32>()?,
+                content.next().ok_or(err_message)?.parse::<f32>()?),
+        })
+
+    }
+}
+
+
+/// read a state file, space- and newline-separated
+///
+/// The file must contain only 0s and 1s and all rows need to have the same length.
+pub fn read_csv(fname: &str) 
+    -> Result<((usize, usize), Vec<bool>), Box<dyn std::error::Error>> 
+{
+    
+    // load the content
+    let content = std::fs::read_to_string(fname)?;
+
+    // separate in rows
+    let content = content.split('\n').collect::<Vec<&str>>();
+    let n_rows = content.len() - 1;
+
+    // number of columns
+    let n_cols = content[0].split(' ').collect::<Vec<&str>>().len() - 1;
+
+    // load the data
+    let mut data = Vec::<bool>::new();
+    for row in content {
+        for el in row.split(' ') {
+            if let Ok(x) = el.parse::<u8>() { data.push(x == 1) };
+        }
+    }
+   
+    Ok(((n_rows, n_cols), data))
 }
