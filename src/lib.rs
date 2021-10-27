@@ -5,10 +5,6 @@ use rayon::prelude::*;
 mod graph;
 pub use graph::*;
 
-struct SendPtr (*const ServerKey);
-unsafe impl Sync for SendPtr {}
-unsafe impl Send for SendPtr {}
-
 // add one encrypted bit `a` to the encrypted binary representation `b` of a 3-bit number, with 8
 // identified with 0
 fn add_1(server_key: &ServerKey, a: &Ciphertext, b: &(Ciphertext, Ciphertext, Ciphertext)) 
