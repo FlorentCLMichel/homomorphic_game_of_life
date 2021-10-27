@@ -1,10 +1,14 @@
 # Game of life using Fully homomorphic encryption
 
-Playing around with Zama's [concrete-boolean](https://github.com/zama-ai/concrete/tree/master/concrete-boolean) library, I though it would be fun to use it to implement Conway's game of life. 
+A simple implementation of Conway's Game of Life built using Zama's [concrete-boolean](https://github.com/zama-ai/concrete/tree/master/concrete-boolean) library.
 
 ## Build
 
 Just run `cargo build --release`. 
+
+## Run
+
+Run `./target/release/homomorphic_game_of_life` (or `./target/release/homomorphic_game_of_life.exe` on Windows). 
 
 ## What does it do exactly?
 
