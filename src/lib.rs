@@ -19,18 +19,18 @@ fn add_1(server_key: &ServerKey, a: &Ciphertext, b: &(Ciphertext, Ciphertext, Ci
 }
 
 // sum the encrypted bits in `elements`, starting from an encrypted 3-bit representation of 0
-fn sum(server_key: &ServerKey, elements: &Vec<&Ciphertext>, zeros: &(Ciphertext, Ciphertext, Ciphertext)) 
+fn sum(server_key: &ServerKey, elements: &[&Ciphertext], zeros: &(Ciphertext, Ciphertext, Ciphertext)) 
     -> (Ciphertext, Ciphertext, Ciphertext) 
 {
     let mut result = add_1(server_key, elements[0], zeros);
-    for i in 1..elements.len() {
-        result = add_1(server_key, elements[i], &result);
+    for item in elements.iter().skip(1) {
+        result = add_1(server_key, item, &result);
     }
     result
 }
 
 // check if a cell will be alive after the update
-fn is_alive(server_key: &ServerKey, cell: &Ciphertext, neighbours: &Vec<&Ciphertext>, 
+fn is_alive(server_key: &ServerKey, cell: &Ciphertext, neighbours: &[&Ciphertext], 
             zeros: &(Ciphertext, Ciphertext, Ciphertext))
     -> Ciphertext 
 {
@@ -142,7 +142,7 @@ impl Board {
     /// }
     /// println!("");
     /// ```
-    pub fn update(&mut self, server_keys: &Vec<std::sync::Mutex<ServerKey>>, zeros: &(Ciphertext, Ciphertext, Ciphertext)) 
+    pub fn update(&mut self, server_keys: &[std::sync::Mutex<ServerKey>], zeros: &(Ciphertext, Ciphertext, Ciphertext)) 
     {
         
         let nx = self.dimensions.0;
@@ -171,13 +171,13 @@ impl Board {
             // see if the cell is alive of dead
             let mut k = i;
             let mut sk = server_keys[k % server_keys.len()].try_lock();
-            while let Err(_) = sk {
+            while sk.is_err() {
                 k += 1;
                 sk = server_keys[k % server_keys.len()].try_lock();
             }
             is_alive(&sk.unwrap(), 
                      &self.states[i*ny+j], 
-                     &vec![n1,n2,n3,n4,n5,n6,n7,n8], zeros)
+                     &[n1,n2,n3,n4,n5,n6,n7,n8], zeros)
             
         }).collect();
 
@@ -231,6 +231,7 @@ impl Config {
 /// read a state file, space- and newline-separated
 ///
 /// The file must contain only 0s and 1s and all rows need to have the same length.
+#[allow(clippy::type_complexity)]
 pub fn read_csv(fname: &str) 
     -> Result<((usize, usize), Vec<bool>), Box<dyn std::error::Error>> 
 {
@@ -243,7 +244,7 @@ pub fn read_csv(fname: &str)
     let n_rows = content.len() - 1;
 
     // number of columns
-    let n_cols = content[0].split(' ').collect::<Vec<&str>>().len() - 1;
+    let n_cols = content[0].split(' ').count() - 1;
 
     // load the data
     let mut data = Vec::<bool>::new();
